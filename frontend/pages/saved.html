@@ -68,7 +68,7 @@
           <div class="news-desc">${a.description || ''}</div>
           <div class="news-footer">
             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openArticle(${i})">Read</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="event.stopPropagation();deleteArticle('\${a._id}')">🗑</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="event.stopPropagation();deleteArticle('${a._id}')">🗑</button>
           </div>
         </div>
       </div>
@@ -112,7 +112,7 @@
 
   async function deleteCurrentArticle() {
     if (!currentArticle) return;
-    await deleteArticle(currentArticle.id);
+    await deleteArticle(currentArticle._id);
     closeModal();
   }
 
