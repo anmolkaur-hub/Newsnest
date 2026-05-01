@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NewsNest — Saved Articles</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div id="nav-container"></div>
+<div class="container">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <h1 class="page-title">Saved Articles</h1>
+      <p class="page-subtitle">Your personal reading collection</p>
+    </div>
+    <a href="/dashboard" class="btn btn-primary">+ Find News</a>
+  </div>
+
+  <div id="savedGrid" class="grid-3"></div>
+</div>
+
+<!-- Article Modal -->
+<div class="modal-overlay" id="articleModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;gap:1rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;line-height:1.3;flex:1;" id="modalTitle"></h3>
+      <button onclick="closeModal()" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <div id="modalMeta" style="font-size:0.78rem;color:var(--ink3);margin-bottom:1rem;"></div>
+    <img id="modalImg" style="width:100%;border-radius:var(--radius);margin-bottom:1rem;display:none;" alt=""/>
+    <p id="modalDesc" style="font-size:0.9rem;color:var(--ink2);line-height:1.7;margin-bottom:1.25rem;"></p>
+    <div style="margin-bottom:1.25rem;">
+      <button class="btn btn-ghost btn-sm" id="summarizeBtn" onclick="summarizeArticle()">🤖 AI Summary</button>
+      <div id="summaryBox" style="display:none;margin-top:0.75rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;">
+        <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:0.5rem;">🤖 Gemini Summary</div>
+        <div id="summaryText" style="font-size:0.875rem;color:var(--ink2);line-height:1.7;"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0.75rem;">
+      <a id="readFullBtn" href="#" target="_blank" class="btn btn-primary btn-sm">Read Full Article ↗</a>
+      <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="deleteCurrentArticle()">🗑 Remove</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth();
+  document.getElementById('nav-container').innerHTML = renderNav('saved');
+  let currentArticle = null;
+
+  async function loadSaved() {
+    document.getElementById('savedGrid').innerHTML = '<div class="spinner"></div>';
+    const data = await apiFetch('/news/saved');
+    if (!data.success || !data.data.length) {
+      document.getElementById('savedGrid').innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">🔖</div><div class="empty-title">No saved articles yet</div><p>Browse headlines and save articles you want to read later</p><a href="/dashboard" class="btn btn-primary" style="margin-top:1rem;">Browse News</a></div>`;
+      return;
+    }
+    window._saved = data.data;
+    document.getElementById('savedGrid').innerHTML = data.data.map((a, i) => `
+      <div class="news-card" onclick="openArticle(${i})">
+        ${a.url_to_image ? `<img src="${a.url_to_image}" class="news-img" alt="" onerror="this.style.display='none'"/>` : `<div class="news-img-placeholder">📰</div>`}
+        <div class="news-body">
+          <div class="news-source">${a.source_name || 'Unknown'} · ${timeAgo(a.saved_at)}</div>
+          <div class="news-title">${a.title}</div>
+          <div class="news-desc">${a.description || ''}</div>
+          <div class="news-footer">
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openArticle(${i})">Read</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="event.stopPropagation();deleteArticle(${a.id})">🗑</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openArticle(i) {
+    const a = window._saved[i];
+    currentArticle = a;
+    document.getElementById('modalTitle').textContent = a.title;
+    document.getElementById('modalMeta').textContent = (a.source_name || '') + (a.published_at ? ' · ' + new Date(a.published_at).toLocaleDateString() : '');
+    const img = document.getElementById('modalImg');
+    if (a.url_to_image) { img.src = a.url_to_image; img.style.display = 'block'; } else { img.style.display = 'none'; }
+    document.getElementById('modalDesc').textContent = a.description || 'No description available.';
+    document.getElementById('readFullBtn').href = a.url;
+    document.getElementById('summaryBox').style.display = 'none';
+    document.getElementById('summarizeBtn').textContent = '🤖 AI Summary';
+    document.getElementById('articleModal').classList.add('show');
+  }
+
+  async function summarizeArticle() {
+    if (!currentArticle) return;
+    const btn = document.getElementById('summarizeBtn');
+    btn.textContent = 'Summarizing...'; btn.disabled = true;
+    const data = await apiFetch('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify({ title: currentArticle.title, description: currentArticle.description })
+    });
+    btn.disabled = false; btn.textContent = '🤖 AI Summary';
+    if (data.success) {
+      const lines = data.summary.split('\n').filter(l => l.trim());
+      document.getElementById('summaryText').innerHTML = lines.map(l => `<div style="margin-bottom:0.4rem;">${l}</div>`).join('');
+      document.getElementById('summaryBox').style.display = 'block';
+    } else showToast('Failed to summarize', 'error');
+  }
+
+  async function deleteArticle(id) {
+    const data = await apiFetch('/news/saved/' + id, { method: 'DELETE' });
+    if (data.success) { showToast('Removed!'); loadSaved(); }
+  }
+
+  async function deleteCurrentArticle() {
+    if (!currentArticle) return;
+    await deleteArticle(currentArticle.id);
+    closeModal();
+  }
+
+  function closeModal() { document.getElementById('articleModal').classList.remove('show'); }
+  document.getElementById('articleModal').addEventListener('click', e => { if (e.target === document.getElementById('articleModal')) closeModal(); });
+
+  loadSaved();
+</script>
+</body>
+</html>

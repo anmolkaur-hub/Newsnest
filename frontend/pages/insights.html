@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NewsNest — AI Insights</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div id="nav-container"></div>
+<div class="container">
+  <div class="page-header">
+    <h1 class="page-title">🤖 AI Insights</h1>
+    <p class="page-subtitle">Gemini analyzes your reading habits and interests</p>
+  </div>
+
+  <!-- Stats -->
+  <div id="statsRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;margin-bottom:2rem;"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:1.5rem;">
+    <!-- Main insight -->
+    <div>
+      <div style="background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <h2 style="font-family:'Playfair Display',serif;">Your Reading Profile</h2>
+          <button class="btn btn-ghost btn-sm" onclick="loadInsights()">↺ Refresh</button>
+        </div>
+        <div id="insightContent">
+          <div style="display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--bg2);border-radius:var(--radius);">
+            <span style="font-size:1.5rem;">🤖</span>
+            <span style="color:var(--ink2);font-style:italic;">Gemini is analyzing your reading habits...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent saved -->
+      <div style="background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:1.5rem;">
+        <h2 style="font-family:'Playfair Display',serif;margin-bottom:1rem;">Recently Saved</h2>
+        <div id="recentSaved"></div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div>
+      <div style="background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1rem;">
+        <h3 style="font-family:'Playfair Display',serif;margin-bottom:1rem;">Topics You Follow</h3>
+        <div id="topicChart"></div>
+      </div>
+      <div style="background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
+        <h3 style="font-family:'Playfair Display',serif;margin-bottom:1rem;">Quick Stats</h3>
+        <div id="quickStats"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth();
+  document.getElementById('nav-container').innerHTML = renderNav('insights');
+
+  async function loadInsights() {
+    document.getElementById('insightContent').innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--bg2);border-radius:var(--radius);">
+        <span style="font-size:1.5rem;">🤖</span>
+        <span style="color:var(--ink2);font-style:italic;">Gemini is analyzing your reading habits...</span>
+      </div>`;
+
+    const data = await apiFetch('/ai/insights');
+    if (!data.success) {
+      document.getElementById('insightContent').innerHTML = '<p style="color:var(--red)">Failed to load insights.</p>';
+      return;
+    }
+
+    const { insight, stats, topics } = data.data;
+
+    // Render insight
+    document.getElementById('insightContent').innerHTML = `
+      <div class="insight-box">
+        <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a8c8e8;margin-bottom:0.75rem;">🤖 Gemini Analysis</div>
+        <p class="insight-text">${insight}</p>
+      </div>`;
+
+    // Stats row
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat-card"><div class="stat-value">${stats.total_read}</div><div class="stat-label">Articles Read</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.total_saved}</div><div class="stat-label">Articles Saved</div></div>
+      <div class="stat-card"><div class="stat-value" style="font-size:1.2rem;">${stats.fav_topic || '—'}</div><div class="stat-label">Top Interest</div></div>
+    `;
+
+    // Topics chart
+    if (topics?.length) {
+      const max = Math.max(...topics.map(t => parseInt(t.count)));
+      document.getElementById('topicChart').innerHTML = topics.map(t => `
+        <div class="genre-bar-wrap">
+          <div class="genre-label"><span>${t.topic}</span><span style="color:var(--ink3)">${t.count}</span></div>
+          <div class="genre-bar-bg"><div class="genre-bar-fill" style="width:${Math.round((parseInt(t.count)/max)*100)}%"></div></div>
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('topicChart').innerHTML = '<p style="color:var(--ink3);font-size:0.85rem;font-style:italic;">Read some articles to see your topic breakdown!</p>';
+    }
+
+    // Quick stats
+    document.getElementById('quickStats').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <div style="display:flex;justify-content:space-between;font-size:0.875rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">
+          <span style="color:var(--ink2)">Total Read</span><span style="font-weight:700;">${stats.total_read}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.875rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">
+          <span style="color:var(--ink2)">Total Saved</span><span style="font-weight:700;">${stats.total_saved}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.875rem;">
+          <span style="color:var(--ink2)">Top Topic</span><span style="font-weight:700;">${stats.fav_topic || '—'}</span>
+        </div>
+      </div>`;
+
+    loadRecentSaved();
+  }
+
+  async function loadRecentSaved() {
+    const data = await apiFetch('/news/saved');
+    if (!data.success || !data.data.length) {
+      document.getElementById('recentSaved').innerHTML = '<p style="color:var(--ink3);font-style:italic;font-size:0.875rem;">No saved articles yet. Start saving articles from Headlines!</p>';
+      return;
+    }
+    document.getElementById('recentSaved').innerHTML = data.data.slice(0, 4).map(a => `
+      <div style="display:flex;gap:0.875rem;padding:0.875rem 0;border-bottom:1px solid var(--border);">
+        ${a.url_to_image ? `<img src="${a.url_to_image}" style="width:60px;height:45px;object-fit:cover;border-radius:var(--radius);flex-shrink:0;" alt=""/>` : `<div style="width:60px;height:45px;background:var(--bg2);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">📰</div>`}
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Playfair Display',serif;font-size:0.875rem;font-weight:700;line-height:1.3;margin-bottom:0.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.title}</div>
+          <div style="font-size:0.75rem;color:var(--red);font-weight:700;">${a.source_name || ''} · ${timeAgo(a.saved_at)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  loadInsights();
+</script>
+</body>
+</html>

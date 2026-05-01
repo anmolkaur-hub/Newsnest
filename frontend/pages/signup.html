@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NewsNest — Sign Up</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">News<span>Nest</span></div>
+    <div class="auth-tagline">Your AI-Powered News Companion</div>
+    <div id="err" style="display:none;color:var(--red);font-size:0.875rem;margin-bottom:1rem;padding:0.75rem;border:1px solid var(--red);border-radius:var(--radius);"></div>
+    <form id="signupForm">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" id="name" class="input" placeholder="Your name" required/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" id="email" class="input" placeholder="you@example.com" required/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="password" class="input" placeholder="Min 6 characters" required/>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" id="submitBtn">Create Account</button>
+    </form>
+    <div class="auth-footer">Already have an account? <a href="/login">Sign in</a></div>
+  </div>
+</div>
+<script src="/js/api.js"></script>
+<script>
+  if (getToken()) window.location.href = '/dashboard';
+  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const err = document.getElementById('err');
+    btn.textContent = 'Creating...'; btn.disabled = true; err.style.display = 'none';
+    const data = await apiFetch('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ name: document.getElementById('name').value, email: document.getElementById('email').value, password: document.getElementById('password').value })
+    });
+    if (data.success) { setAuth(data.token, data.user); window.location.href = '/dashboard'; }
+    else { err.textContent = data.message; err.style.display = 'block'; btn.textContent = 'Create Account'; btn.disabled = false; }
+  });
+</script>
+</body>
+</html>

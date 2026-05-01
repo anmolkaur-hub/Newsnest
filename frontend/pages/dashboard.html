@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NewsNest — Headlines</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div id="nav-container"></div>
+
+<div class="container">
+  <!-- Search -->
+  <div style="margin:1.5rem 0;">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" class="input" placeholder="Search news worldwide..." style="padding-left:2.75rem;font-size:1rem;"/>
+    </div>
+  </div>
+
+  <!-- Topics -->
+  <div class="topics-bar" id="topicsBar">
+    <div class="topic-pill active" onclick="selectTopic('general','Politics',this)">🏛️ Top Stories</div>
+    <div class="topic-pill" onclick="selectTopic('technology','Technology',this)">💻 Technology</div>
+    <div class="topic-pill" onclick="selectTopic('sports','Sports',this)">⚽ Sports</div>
+    <div class="topic-pill" onclick="selectTopic('business','Business',this)">💼 Business</div>
+    <div class="topic-pill" onclick="selectTopic('entertainment','Entertainment',this)">🎬 Entertainment</div>
+    <div class="topic-pill" onclick="selectTopic('health','Health',this)">🏥 Health</div>
+    <div class="topic-pill" onclick="selectTopic('science','Science',this)">🔬 Science</div>
+  </div>
+
+  <!-- Headlines Label -->
+  <div class="page-header">
+    <h1 class="page-title" id="sectionTitle">Top Stories</h1>
+    <p class="page-subtitle" id="sectionSub">Latest headlines from around the world</p>
+  </div>
+
+  <!-- News Grid -->
+  <div id="newsGrid" class="grid-3"></div>
+</div>
+
+<!-- Article Modal -->
+<div class="modal-overlay" id="articleModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;gap:1rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;line-height:1.3;flex:1;" id="modalTitle"></h3>
+      <button onclick="closeModal()" class="btn btn-ghost btn-sm" style="flex-shrink:0;">✕</button>
+    </div>
+    <div id="modalMeta" style="font-size:0.78rem;color:var(--ink3);margin-bottom:1rem;"></div>
+    <img id="modalImg" style="width:100%;border-radius:var(--radius);margin-bottom:1rem;display:none;" alt=""/>
+    <p id="modalDesc" style="font-size:0.9rem;color:var(--ink2);line-height:1.7;margin-bottom:1.25rem;"></p>
+
+    <!-- AI Summary -->
+    <div style="margin-bottom:1.25rem;">
+      <button class="btn btn-ghost btn-sm" id="summarizeBtn" onclick="summarizeArticle()">🤖 AI Summary</button>
+      <div id="summaryBox" style="display:none;margin-top:0.75rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;">
+        <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:0.5rem;">🤖 Gemini Summary</div>
+        <div id="summaryText" style="font-size:0.875rem;color:var(--ink2);line-height:1.7;"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+      <a id="readFullBtn" href="#" target="_blank" class="btn btn-primary btn-sm">Read Full Article ↗</a>
+      <button class="btn btn-ghost btn-sm" onclick="saveCurrentArticle()">🔖 Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth();
+  document.getElementById('nav-container').innerHTML = renderNav('dashboard');
+
+  let currentTopic = 'general';
+  let currentArticle = null;
+
+  async function loadNews(topic, q) {
+    document.getElementById('newsGrid').innerHTML = '<div class="spinner"></div>';
+    const endpoint = q ? `/news?q=${encodeURIComponent(q)}` : `/news?topic=${topic}`;
+    const data = await apiFetch(endpoint);
+    if (!data.success || !data.data.length) {
+      document.getElementById('newsGrid').innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📰</div><div class="empty-title">No articles found</div><p>Try a different search or topic</p></div>`;
+      return;
+    }
+    document.getElementById('newsGrid').innerHTML = data.data.map((a, i) => `
+      <div class="news-card" onclick="openArticle(${i})">
+        ${a.urlToImage ? `<img src="${a.urlToImage}" class="news-img" alt="" onerror="this.style.display='none'"/>` : `<div class="news-img-placeholder">📰</div>`}
+        <div class="news-body">
+          <div class="news-source">${a.source?.name || 'Unknown'} · ${timeAgo(a.publishedAt)}</div>
+          <div class="news-title">${a.title}</div>
+          <div class="news-desc">${a.description || ''}</div>
+          <div class="news-footer">
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openArticle(${i})">Read More</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();quickSave(${i})">🔖</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    window._articles = data.data;
+  }
+
+  function selectTopic(slug, name, el) {
+    currentTopic = slug;
+    document.querySelectorAll('.topic-pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('sectionTitle').textContent = name;
+    document.getElementById('sectionSub').textContent = `Latest ${name.toLowerCase()} headlines`;
+    document.getElementById('searchInput').value = '';
+    loadNews(slug);
+  }
+
+  let searchTimeout;
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) { loadNews(currentTopic); return; }
+    searchTimeout = setTimeout(() => {
+      document.getElementById('sectionTitle').textContent = `Search: "${q}"`;
+      document.getElementById('sectionSub').textContent = 'Search results';
+      loadNews(null, q);
+    }, 600);
+  });
+
+  function openArticle(i) {
+    const a = window._articles[i];
+    currentArticle = a;
+    document.getElementById('modalTitle').textContent = a.title;
+    document.getElementById('modalMeta').textContent = (a.source?.name || '') + (a.publishedAt ? ' · ' + new Date(a.publishedAt).toLocaleDateString() : '');
+    const img = document.getElementById('modalImg');
+    if (a.urlToImage) { img.src = a.urlToImage; img.style.display = 'block'; } else { img.style.display = 'none'; }
+    document.getElementById('modalDesc').textContent = a.description || 'No description available.';
+    document.getElementById('readFullBtn').href = a.url;
+    document.getElementById('summaryBox').style.display = 'none';
+    document.getElementById('summarizeBtn').textContent = '🤖 AI Summary';
+    document.getElementById('articleModal').classList.add('show');
+
+    // Log read
+    apiFetch('/news/read', { method: 'POST', body: JSON.stringify({ title: a.title, url: a.url, topic: currentTopic }) });
+  }
+
+  async function summarizeArticle() {
+    if (!currentArticle) return;
+    const btn = document.getElementById('summarizeBtn');
+    btn.textContent = 'Summarizing...'; btn.disabled = true;
+    const data = await apiFetch('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify({ title: currentArticle.title, description: currentArticle.description, content: currentArticle.content })
+    });
+    btn.disabled = false; btn.textContent = '🤖 AI Summary';
+    if (data.success) {
+      const lines = data.summary.split('\n').filter(l => l.trim());
+      document.getElementById('summaryText').innerHTML = lines.map(l => `<div style="margin-bottom:0.4rem;">${l}</div>`).join('');
+      document.getElementById('summaryBox').style.display = 'block';
+    } else {
+      showToast('Failed to summarize', 'error');
+    }
+  }
+
+  async function quickSave(i) {
+    const a = window._articles[i];
+    const data = await apiFetch('/news/save', {
+      method: 'POST',
+      body: JSON.stringify({ title: a.title, description: a.description, url: a.url, urlToImage: a.urlToImage, sourceName: a.source?.name, publishedAt: a.publishedAt, topic: currentTopic })
+    });
+    showToast(data.success ? '🔖 Article saved!' : (data.message || 'Failed'), data.success ? 'success' : 'error');
+  }
+
+  async function saveCurrentArticle() {
+    if (!currentArticle) return;
+    const a = currentArticle;
+    const data = await apiFetch('/news/save', {
+      method: 'POST',
+      body: JSON.stringify({ title: a.title, description: a.description, url: a.url, urlToImage: a.urlToImage, sourceName: a.source?.name, publishedAt: a.publishedAt, topic: currentTopic })
+    });
+    showToast(data.success ? '🔖 Saved!' : (data.message || 'Failed'), data.success ? 'success' : 'error');
+  }
+
+  function closeModal() { document.getElementById('articleModal').classList.remove('show'); }
+  document.getElementById('articleModal').addEventListener('click', e => { if (e.target === document.getElementById('articleModal')) closeModal(); });
+
+  loadNews('general');
+</script>
+</body>
+</html>
